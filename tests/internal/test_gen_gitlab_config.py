@@ -86,3 +86,20 @@ def test_build_base_venvs_template_gets_sanitized_bool_values(gen_gitlab_config_
     assert 'if [[ "false" == "true" ]]' in config
     assert "$(curl" not in config
     assert "$DD_API_KEY" not in config
+
+
+def test_build_docs_uses_locked_uv_environment(gen_gitlab_config_mod, monkeypatch, tmp_path):
+    needs_testrun = types.ModuleType("needs_testrun")
+    pr_matches_patterns = mock.Mock(return_value=True)
+    needs_testrun.pr_matches_patterns = pr_matches_patterns
+    monkeypatch.setitem(sys.modules, "needs_testrun", needs_testrun)
+    monkeypatch.setattr(gen_gitlab_config_mod, "TESTS_GEN", tmp_path / "tests-gen.yml")
+    monkeypatch.setattr(gen_gitlab_config_mod, "_global_python_versions", set())
+
+    gen_gitlab_config_mod.gen_build_docs()
+
+    config = (tmp_path / "tests-gen.yml").read_text()
+    assert "DD_TRACE_ENABLED=false uv run --no-project --python 3.10" in config
+    assert "--with-requirements .uv/build-docs--build-docs-py310-*.txt" in config
+    assert ".uv/build-docs--build-docs-py310-*.txt" in pr_matches_patterns.call_args.args[0]
+    assert gen_gitlab_config_mod._global_python_versions == {"3.10"}
